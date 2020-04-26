@@ -19,7 +19,11 @@ package vm
 import (
 	"errors"
 	"math/big"
-
+	"fmt"
+	"bufio"
+	"time"
+//	"reflect"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -37,10 +41,40 @@ var (
 	errInvalidJump           = errors.New("evm: invalid jump destination")
 )
 
+func timeTrack(start time.Time, name string) {
+
+	elapsed := time.Since(start)
+	log.Info("function name %s took %s secs", name, elapsed)
+}
+
 func opAdd(pc *uint64, interpreter *EVMInterpreter, callContext *callCtx) ([]byte, error) {
+
+	defer timeTrack(time.Now(), "opAdd")
 	x, y := callContext.stack.pop(), callContext.stack.peek()
+	
+	conn := interpreter.evm.opteeConn
+	err := interpreter.evm.opteeError
+
+	// If connection to OPTEE server is established
+	if err == nil {
+	//	log.Error("Sending data to OPTEE server", conn)
+		// msg := "ADD 12 5 "
+		msg := "ADD " + x.String() + " " + y.String() + " "
+		fmt.Fprintf(conn, msg + "\n")
+
+		message, _ := bufio.NewReader(conn).ReadString('\n')
+		log.Error("Solution Sent by OPTEE server is " , message)
+		//y.SetString(message, 10);
+
+	} else { // carry out function without optee
+
+		log.Error("Could not connect to OPTEE server")
+		math.U256(y.Add(x, y))
+	}
+
 	math.U256(y.Add(x, y))
 
+	log.Error("y ans is: ", y.String())
 	interpreter.intPool.putOne(x)
 	return nil, nil
 }

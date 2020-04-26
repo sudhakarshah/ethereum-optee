@@ -20,7 +20,9 @@ import (
 	"math/big"
 	"sync/atomic"
 	"time"
+	"net"
 
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
@@ -128,6 +130,9 @@ type EVM struct {
 	// available gas is calculated in gasCall* according to the 63/64 rule and later
 	// applied in opCall*.
 	callGasTemp uint64
+
+	opteeConn net.Conn
+	opteeError error
 }
 
 // NewEVM returns a new EVM. The returned EVM is not thread safe and should
@@ -162,6 +167,15 @@ func NewEVM(ctx Context, statedb StateDB, chainConfig *params.ChainConfig, vmCon
 	// as we always want to have the built-in EVM as the failover option.
 	evm.interpreters = append(evm.interpreters, NewEVMInterpreter(evm, vmConfig))
 	evm.interpreter = evm.interpreters[0]
+
+	evm.opteeConn, evm.opteeError = net.Dial("tcp", "127.0.0.1:12340")
+
+	if evm.opteeError != nil {
+                log.Error("Could not connect to OPTEE server", evm.opteeError)
+        } else {
+
+                log.Error(".......................Connected to OPTEE server..............")
+        }
 
 	return evm
 }
