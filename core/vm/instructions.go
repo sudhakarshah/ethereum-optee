@@ -22,8 +22,10 @@ import (
 	"fmt"
 	"bufio"
 	"time"
-//	"reflect"
-	"github.com/ethereum/go-ethereum/log"
+  "log"
+  "net"
+
+//	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -41,58 +43,118 @@ var (
 	errInvalidJump           = errors.New("evm: invalid jump destination")
 )
 
-func timeTrack(start time.Time, name string) {
+func solveInOptee(x *big.Int, y *big.Int, opcodeName string, conn net.Conn) bool {
 
+  temp := new(big.Int)
+  temp.SetString("99999", 10)
+	log.Println("SolveInOptee called")
+
+  // if its not a very big number
+	if (temp.Cmp(x) == 1 && temp.Cmp(y) == 1) {
+    msg := opcodeName + " " + x.String() + " " + y.String() + " "
+		fmt.Fprintf(conn, msg + "\n")
+
+	  log.Println("msg sent to optee")
+		message, _ := bufio.NewReader(conn).ReadString('\n')
+
+	  log.Printf("msg sent by optee is %s\n", message)
+    if len(message) != 0 {
+		  log.Println("Solution Sent by OPTEE server is " , message)
+      y.SetString(message, 10);
+      return true
+    }
+	}
+
+  return false
+
+}
+func timeTrack(start time.Time, name string) {
 	elapsed := time.Since(start)
-	log.Info("function name %s took %s secs", name, elapsed)
+	log.Printf("function name %s took %d time", name, (elapsed.Nanoseconds())/1000)
 }
 
 func opAdd(pc *uint64, interpreter *EVMInterpreter, callContext *callCtx) ([]byte, error) {
+  
+  startTime := time.Now()
+	x, y := callContext.stack.pop(), callContext.stack.peek()
+  opcodeName := "ADD"	
+	conn := interpreter.evm.opteeConn
+	err := interpreter.evm.opteeError
+  
+  optee_success := false
 
-	defer timeTrack(time.Now(), "opAdd")
+	// If connection to OPTEE server is established
+  if (err == nil) {
+    optee_success = solveInOptee(x, y, opcodeName, conn)
+  }
+
+  if optee_success == false {
+		math.U256(y.Add(x, y))
+		log.Println("Calculated y normally", y)
+    defer timeTrack(startTime, opcodeName + "_NORMAL")
+
+	} else {
+    defer timeTrack(startTime, opcodeName)
+  }
+
+	interpreter.intPool.putOne(x)
+	return nil, nil
+
+}
+
+func opSub(pc *uint64, interpreter *EVMInterpreter, callContext *callCtx) ([]byte, error) {
+  startTime := time.Now()
 	x, y := callContext.stack.pop(), callContext.stack.peek()
 	
 	conn := interpreter.evm.opteeConn
 	err := interpreter.evm.opteeError
+  opcodeName := "SUB" 
+  optee_success := false
 
 	// If connection to OPTEE server is established
-	if err == nil {
-	//	log.Error("Sending data to OPTEE server", conn)
-		// msg := "ADD 12 5 "
-		msg := "ADD " + x.String() + " " + y.String() + " "
-		fmt.Fprintf(conn, msg + "\n")
+  if (err == nil) {
+    optee_success = solveInOptee(x, y, opcodeName, conn)
+  }
 
-		message, _ := bufio.NewReader(conn).ReadString('\n')
-		log.Error("Solution Sent by OPTEE server is " , message)
-		//y.SetString(message, 10);
+  if optee_success == false {
+		math.U256(y.Sub(x, y))
+		log.Println("Calculated y normally", y)
+    defer timeTrack(startTime, opcodeName + "_NORMAL")
 
-	} else { // carry out function without optee
-
-		log.Error("Could not connect to OPTEE server")
-		math.U256(y.Add(x, y))
-	}
-
-	math.U256(y.Add(x, y))
-
-	log.Error("y ans is: ", y.String())
-	interpreter.intPool.putOne(x)
-	return nil, nil
-}
-
-func opSub(pc *uint64, interpreter *EVMInterpreter, callContext *callCtx) ([]byte, error) {
-	x, y := callContext.stack.pop(), callContext.stack.peek()
-	math.U256(y.Sub(x, y))
+	} else {
+    defer timeTrack(startTime, opcodeName)
+  }
 
 	interpreter.intPool.putOne(x)
 	return nil, nil
+
 }
 
 func opMul(pc *uint64, interpreter *EVMInterpreter, callContext *callCtx) ([]byte, error) {
+  startTime := time.Now()
 	x, y := callContext.stack.pop(), callContext.stack.pop()
-	callContext.stack.push(math.U256(x.Mul(x, y)))
+	
+	conn := interpreter.evm.opteeConn
+	err := interpreter.evm.opteeError
+  opcodeName := "MUL" 
+  optee_success := false
 
-	interpreter.intPool.putOne(y)
+	// If connection to OPTEE server is established
+  if (err == nil) {
+    optee_success = solveInOptee(x, y, opcodeName, conn)
+  }
 
+  if optee_success == false {
+		math.U256(y.Mul(x, y))
+		log.Println("Calculated y normally", y)
+    defer timeTrack(startTime, opcodeName + "_NORMAL")
+
+	} else {
+    defer timeTrack(startTime, opcodeName)
+  }
+
+	callContext.stack.push(y)
+	interpreter.intPool.putOne(x)
 	return nil, nil
 }
 
